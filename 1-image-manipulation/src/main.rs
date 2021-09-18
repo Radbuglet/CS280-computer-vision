@@ -26,20 +26,20 @@ fn main_fallible() -> AnyResult<()> {
     );
 
     // Load images
-    let image1 = image::open("../images/in/color-monke.jpg")
+    let image1 = image::open("images/in/image1.jpg")
         .context("Could not open 'images/in/color-monke.jpg'. Is the CWD correct?")?
         .to_rgba8();
 
-    let image2 = image::open("../images/in/image2.jpg")
+    let image2 = image::open("images/in/image2.jpg")
         .context("Could not open 'images/in/color-monke.jpg'. Is the CWD correct?")?
         .to_rgba8();
 
     // Darken
     map_image(&image1, |pixel, _, _| {
         // We could also use the built-in darken function but that feels like cheating...
-        LinSrgba::compose(pixel.decompose().iter().copied().map(|comp| comp * 0.25))
+        LinSrgba::compose(pixel.decompose().iter().copied().map(|comp| comp * 0.5))
     })
-    .save("../images/image1_dark.jpg")?;
+    .save("images/image1_dark.jpg")?;
 
     // Make grayscale
     map_image(&image1, |pixel, _, _| {
@@ -47,37 +47,50 @@ fn main_fallible() -> AnyResult<()> {
         let luma = (pixel.red + pixel.green + pixel.blue) / 3.;
         LinSrgba::new(luma, luma, luma, pixel.alpha)
     })
-    .save("../images/image1_grayscale.jpg")?;
+    .save("images/image1_grayscale.jpg")?;
 
     // RGB component masking
-    map_image(&image2, xform_rgba_mask(&[true, false, false, true]))
-        .save("../images/image2_only_red.jpg")?;
+    const PRESERVE: Option<f32> = None;
+    const ZERO: Option<f32> = Some(0.);
+    const ONE: Option<f32> = Some(1.);
 
-    map_image(&image2, xform_rgba_mask(&[false, true, false, true]))
-        .save("../images/image2_only_green.jpg")?;
+    map_image(&image2, xform_rgba_mask(&[PRESERVE, ZERO, ZERO, PRESERVE]))
+        .save("images/image2_only_red.jpg")?;
 
-    map_image(&image2, xform_rgba_mask(&[false, false, true, true]))
-        .save("../images/image2_only_blue.jpg")?;
+    map_image(&image2, xform_rgba_mask(&[ZERO, PRESERVE, ZERO, PRESERVE]))
+        .save("images/image2_only_green.jpg")?;
+
+    map_image(&image2, xform_rgba_mask(&[ZERO, ZERO, PRESERVE, PRESERVE]))
+        .save("images/image2_only_blue.jpg")?;
 
     // LAB component masking
-    map_image(&image1, xform_laba_mask(&[true, false, false, true]))
-        .save("../images/image1_only_l.jpg")?;
+    map_image(&image1, xform_laba_mask(&[PRESERVE, ZERO, ZERO, PRESERVE]))
+        .save("images/image1_only_l.jpg")?;
 
-    map_image(&image1, xform_laba_mask(&[true, true, false, true]))
-        .save("../images/image1_only_la.jpg")?;
+    map_image(&image1, xform_laba_mask(&[PRESERVE, PRESERVE, ZERO, PRESERVE]))
+        .save("images/image1_only_la.jpg")?;
 
-    map_image(&image1, xform_laba_mask(&[true, false, true, true]))
-        .save("../images/image1_only_lb.jpg")?;
+    map_image(&image1, xform_laba_mask(&[PRESERVE, ZERO, PRESERVE, PRESERVE]))
+        .save("images/image1_only_lb.jpg")?;
 
     // HSV component masking
-    map_image(&image1, xform_hsva_mask(&[true, true, true, true]))
-        .save("../images/image1_hsv_debug.jpg")?;
+    map_image(&image1, xform_hsva_mask(&[PRESERVE, PRESERVE, PRESERVE, PRESERVE]))
+        .save("images/image1_hsv_debug.jpg")?;
 
-    map_image(&image1, xform_hsva_mask(&[true, false, true, true]))
-        .save("../images/image1_only_hv.jpg")?;
+    map_image(&image1, xform_hsva_mask(&[ZERO, ZERO, PRESERVE, PRESERVE]))
+        .save("images/image1_only_v.jpg")?;
 
-    map_image(&image1, xform_hsva_mask(&[false, true, true, true]))
-        .save("../images/image1_only_sv.jpg")?;
+    map_image(&image1, xform_hsva_mask(&[PRESERVE, ZERO, PRESERVE, PRESERVE]))
+        .save("images/image1_only_hv.jpg")?;
+
+    map_image(&image1, xform_hsva_mask(&[PRESERVE, ONE, PRESERVE, PRESERVE]))
+        .save("images/image1_full_saturation.jpg")?;
+
+    map_image(&image2, xform_hsva_mask(&[PRESERVE, ONE, PRESERVE, PRESERVE]))
+        .save("images/image2_full_saturation.jpg")?;
+
+    map_image(&image1, xform_hsva_mask(&[ZERO, PRESERVE, PRESERVE, PRESERVE]))
+        .save("images/image1_only_sv.jpg")?;
 
     // HSV hue manipulation
     map_image(&image1, |pixel, x, _| {
@@ -92,7 +105,7 @@ fn main_fallible() -> AnyResult<()> {
         let pixel: Rgba = pixel.into_color();
         pixel.into_color()
     })
-    .save("../images/image_1_hue_shift.jpg")?;
+    .save("images/image_1_hue_shift.jpg")?;
 
     map_image(&image1, |pixel, x, y| {
         // Convert to HSVa - TODO: make a utility function for this once I figure out what's going on.
@@ -107,7 +120,7 @@ fn main_fallible() -> AnyResult<()> {
         let pixel: Rgba = pixel.into_color();
         pixel.into_color()
     })
-    .save("../images/image_1_hue_set.jpg")?;
+    .save("images/image_1_hue_set.jpg")?;
 
     // Combining multiple images
     map_image(&image1, |pixel, x, y| {
@@ -115,13 +128,13 @@ fn main_fallible() -> AnyResult<()> {
         let y_side = y > image1.height() / 2;
 
         match (x_side, y_side) {
-            (false, false) => xform_rgba_mask(&[true, false, false, true])(pixel, x, y),
-            (true, false) => xform_rgba_mask(&[false, true, false, true])(pixel, x, y),
-            (false, true) => xform_rgba_mask(&[false, false, true, true])(pixel, x, y),
+            (false, false) => xform_rgba_mask(&[PRESERVE, ZERO, ZERO, PRESERVE])(pixel, x, y),
+            (true, false) => xform_rgba_mask(&[ZERO, PRESERVE, ZERO, PRESERVE])(pixel, x, y),
+            (false, true) => xform_rgba_mask(&[ZERO, ZERO, PRESERVE, PRESERVE])(pixel, x, y),
             (true, true) => pixel,
         }
     })
-    .save("../images/image1_combined.jpg")?;
+    .save("images/image1_combined.jpg")?;
 
     // Very bad mosaic effect
     // We save this as a png because jpg leaves very visible artifacts.
@@ -129,7 +142,7 @@ fn main_fallible() -> AnyResult<()> {
         let grain = 10;
         *image1.get_pixel(x / grain * grain, y / grain * grain)
     })
-    .save("../images/image1_mosaic.png")?;
+    .save("images/image1_mosaic.png")?;
 
     Ok(())
 }
@@ -146,25 +159,25 @@ where
     })
 }
 
-fn xform_rgba_mask<'a>(mask: &'a [bool]) -> impl 'a + FnMut(LinSrgba, u32, u32) -> LinSrgba {
-    move |pixel, _, _| LinSrgba::compose(vec_mask(pixel.decompose(), &mask))
+fn xform_rgba_mask<'a>(mask: &'a [Option<f32>]) -> impl 'a + FnMut(LinSrgba, u32, u32) -> LinSrgba {
+    move |pixel, _, _| LinSrgba::compose(vec_mask(pixel.decompose(), mask))
 }
 
-fn xform_laba_mask<'a>(mask: &'a [bool]) -> impl 'a + FnMut(LinSrgba, u32, u32) -> LinSrgba {
+fn xform_laba_mask<'a>(mask: &'a [Option<f32>]) -> impl 'a + FnMut(LinSrgba, u32, u32) -> LinSrgba {
     move |pixel, _, _| {
         let pixel: Laba = pixel.into_color();
-        Laba::compose(vec_mask(pixel.decompose(), &mask)).into_color()
+        Laba::compose(vec_mask(pixel.decompose(), mask)).into_color()
     }
 }
 
-fn xform_hsva_mask<'a>(mask: &'a [bool]) -> impl 'a + FnMut(LinSrgba, u32, u32) -> LinSrgba {
+fn xform_hsva_mask<'a>(mask: &'a [Option<f32>]) -> impl 'a + FnMut(LinSrgba, u32, u32) -> LinSrgba {
     move |pixel, _, _| {
         // Convert to HSVa
         let pixel: Srgb = pixel.into_color();
         let pixel: Hsva = pixel.into_color();
 
         // Map pixel
-        let pixel = Hsva::compose(vec_mask(pixel.decompose(), &mask));
+        let pixel = Hsva::compose(vec_mask(pixel.decompose(), mask));
 
         // Undo the conversion
         let pixel: Srgb = pixel.into_color();
@@ -172,7 +185,7 @@ fn xform_hsva_mask<'a>(mask: &'a [bool]) -> impl 'a + FnMut(LinSrgba, u32, u32) 
     }
 }
 
-fn vec_mask<'a, E, I>(components: I, mask: &'a [bool]) -> impl Iterator<Item = E> + 'a
+fn vec_mask<'a, E, I>(components: I, mask: &'a [Option<E>]) -> impl Iterator<Item = E> + 'a
 where
     E: Copy + Num,
     I: 'a + IntoIterator<Item = E>,
@@ -180,5 +193,5 @@ where
     components
         .into_iter()
         .zip(mask.iter())
-        .map(|(comp, mask)| if *mask { comp } else { E::zero() })
+        .map(|(comp, mask)| if let Some(mask) = *mask { mask } else { comp })
 }
