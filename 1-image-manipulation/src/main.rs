@@ -26,12 +26,12 @@ fn main_fallible() -> AnyResult<()> {
     );
 
     // Load images
-    let image1 = image::open("images/in/image1.jpg")
-        .context("Could not open 'images/in/image1.jpg'. Is the CWD correct?")?
+    let image1 = image::open("../images/in/color-monke.jpg")
+        .context("Could not open 'images/in/color-monke.jpg'. Is the CWD correct?")?
         .to_rgba8();
 
-    let image2 = image::open("images/in/image2.jpg")
-        .context("Could not open 'images/in/image1.jpg'. Is the CWD correct?")?
+    let image2 = image::open("../images/in/image2.jpg")
+        .context("Could not open 'images/in/color-monke.jpg'. Is the CWD correct?")?
         .to_rgba8();
 
     // Darken
@@ -39,7 +39,7 @@ fn main_fallible() -> AnyResult<()> {
         // We could also use the built-in darken function but that feels like cheating...
         LinSrgba::compose(pixel.decompose().iter().copied().map(|comp| comp * 0.25))
     })
-    .save("images/image1_dark.jpg")?;
+    .save("../images/image1_dark.jpg")?;
 
     // Make grayscale
     map_image(&image1, |pixel, _, _| {
@@ -47,37 +47,37 @@ fn main_fallible() -> AnyResult<()> {
         let luma = (pixel.red + pixel.green + pixel.blue) / 3.;
         LinSrgba::new(luma, luma, luma, pixel.alpha)
     })
-    .save("images/image1_grayscale.jpg")?;
+    .save("../images/image1_grayscale.jpg")?;
 
     // RGB component masking
     map_image(&image2, xform_rgba_mask(&[true, false, false, true]))
-        .save("images/image2_only_red.jpg")?;
+        .save("../images/image2_only_red.jpg")?;
 
     map_image(&image2, xform_rgba_mask(&[false, true, false, true]))
-        .save("images/image2_only_green.jpg")?;
+        .save("../images/image2_only_green.jpg")?;
 
     map_image(&image2, xform_rgba_mask(&[false, false, true, true]))
-        .save("images/image2_only_blue.jpg")?;
+        .save("../images/image2_only_blue.jpg")?;
 
     // LAB component masking
     map_image(&image1, xform_laba_mask(&[true, false, false, true]))
-        .save("images/image1_only_l.jpg")?;
+        .save("../images/image1_only_l.jpg")?;
 
     map_image(&image1, xform_laba_mask(&[true, true, false, true]))
-        .save("images/image1_only_la.jpg")?;
+        .save("../images/image1_only_la.jpg")?;
 
     map_image(&image1, xform_laba_mask(&[true, false, true, true]))
-        .save("images/image1_only_lb.jpg")?;
+        .save("../images/image1_only_lb.jpg")?;
 
     // HSV component masking
     map_image(&image1, xform_hsva_mask(&[true, true, true, true]))
-        .save("images/image1_hsv_debug.jpg")?;
+        .save("../images/image1_hsv_debug.jpg")?;
 
     map_image(&image1, xform_hsva_mask(&[true, false, true, true]))
-        .save("images/image1_only_hv.jpg")?;
+        .save("../images/image1_only_hv.jpg")?;
 
     map_image(&image1, xform_hsva_mask(&[false, true, true, true]))
-        .save("images/image1_only_sv.jpg")?;
+        .save("../images/image1_only_sv.jpg")?;
 
     // HSV hue manipulation
     map_image(&image1, |pixel, x, _| {
@@ -92,7 +92,7 @@ fn main_fallible() -> AnyResult<()> {
         let pixel: Rgba = pixel.into_color();
         pixel.into_color()
     })
-    .save("images/image_1_hue_shift.jpg")?;
+    .save("../images/image_1_hue_shift.jpg")?;
 
     map_image(&image1, |pixel, x, y| {
         // Convert to HSVa - TODO: make a utility function for this once I figure out what's going on.
@@ -107,7 +107,7 @@ fn main_fallible() -> AnyResult<()> {
         let pixel: Rgba = pixel.into_color();
         pixel.into_color()
     })
-    .save("images/image_1_hue_set.jpg")?;
+    .save("../images/image_1_hue_set.jpg")?;
 
     // Combining multiple images
     map_image(&image1, |pixel, x, y| {
@@ -121,7 +121,7 @@ fn main_fallible() -> AnyResult<()> {
             (true, true) => pixel,
         }
     })
-    .save("images/image1_combined.jpg")?;
+    .save("../images/image1_combined.jpg")?;
 
     // Very bad mosaic effect
     // We save this as a png because jpg leaves very visible artifacts.
@@ -129,7 +129,7 @@ fn main_fallible() -> AnyResult<()> {
         let grain = 10;
         *image1.get_pixel(x / grain * grain, y / grain * grain)
     })
-    .save("images/image1_mosaic.png")?;
+    .save("../images/image1_mosaic.png")?;
 
     Ok(())
 }

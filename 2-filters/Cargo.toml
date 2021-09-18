@@ -1,0 +1,10 @@
+[package]
+name = "filters"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+anyhow = "1.0.43"
+cgmath = "0.18.0"
+image = "0.23.14"
+num-integer = "0.1.44"
