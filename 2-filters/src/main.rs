@@ -3,8 +3,8 @@
 // TODO: Write-ups
 
 use anyhow::Context;
-use image::{ImageBuffer, RgbaImage, GrayImage, Rgba, Luma};
-use cgmath::Vector2;
+use image::{ImageBuffer, RgbaImage, Rgba, Luma};
+use cgmath::{Vector2, Vector3, VectorSpace};
 use std::cell::Cell;
 use std::ops::Deref;
 use num_integer::Integer;
@@ -26,7 +26,9 @@ fn main_fallible() -> anyhow::Result<()> {
     );
 
     // Load images
-    let in_color_monkey = task_timer!("load image", load_image("images/in/color-monke.jpg")?);
+    let in_color_monkey = task_timer!("load image monkey", load_image("images/in/color-monke.jpg")?);
+    let in_blobs = task_timer!("load image blobs", load_image("images/in/blobs.png")?);
+    let in_art = task_timer!("load image art", load_image("images/in/art.png")?);
 
     // Construct common blur filter
     let blur_filter = {
@@ -46,7 +48,7 @@ fn main_fallible() -> anyhow::Result<()> {
         apply_filter(
             &in_color_monkey,
             &luma_to_rgba(&new_filter_movement(2, Vector2::new(2, 0))),
-            &mut pixel_getter_solid,
+            pixel_getter_zeroed,
         ).save("images/exercise_1_filter_1.png")?;
     });
 
@@ -58,7 +60,7 @@ fn main_fallible() -> anyhow::Result<()> {
                 0., 2., 0.,
                 0., 0., 0.,
             ]),
-            &mut pixel_getter_solid,
+            pixel_getter_zeroed,
         ).save("images/exercise_1_filter_2.png")?;
     });
 
@@ -70,8 +72,35 @@ fn main_fallible() -> anyhow::Result<()> {
                 -0.11,  1.88, -0.11,
                 -0.11, -0.11, -0.11,
             ]),
-            &mut pixel_getter_solid,
+            pixel_getter_zeroed,
         ).save("images/exercise_1_filter_3.png")?;
+    });
+
+    task_timer!("exercise 1, filter 3 - sharpen filter example", {
+        let dim = 500;
+        ImageBuffer::from_fn(dim, dim, |x, y| {
+            // Compute pixel value
+            let pos = Vector2::new(x, y).cast::<f32>().unwrap() / dim as f32;  // Normalize coordinates
+            let pos = Vector2::new(pos.x, 1.0 - pos.y);  // Flip y
+            let val = (1.88 * pos.x) - (8. * 0.11 * pos.y);
+
+            // Convert float to color
+            let col_f = if val < 0.0 {
+                Vector3::new(1., 0., 0.).lerp(Vector3::new(0., 0., 0.), 0.4_f32.powf(-val))
+            } else if val < 1.0 {
+                Vector3::new(1., 1., 1.) * val
+            } else {
+                Vector3::new(0., 0., 1.).lerp(Vector3::new(1., 1., 1.), 0.4_f32.powf(val - 1.))
+            };
+
+            // Convert to RGB
+            let col_rgb = match (col_f * 255.).cast::<u8>() {
+                Some(col) => col,
+                None => panic!("Color out of range. Color: {:?}, val: {}", col_f, val),
+            };
+
+            Rgba([col_rgb.x, col_rgb.y, col_rgb.z, 255])
+        }).save("images/exercise_1_filter_3_plot.png")?;
     });
 
     // === Exercise 2 === //
@@ -85,42 +114,64 @@ fn main_fallible() -> anyhow::Result<()> {
                 &new_filter_movement(4, Vector2::new(4, 0)),
                 &new_filter_movement(4, Vector2::new(0, 0)),
             ),
-            &mut pixel_getter_solid,
+            pixel_getter_zeroed,
         ).save("images/exercise_2.png")?;
     });
 
     // === Exercise 3 === //
 
-    task_timer!("exercise 3, filter 1 - square blue", {
+    task_timer!("exercise 3, filter 1 - square blur", {
         apply_filter(
             &in_color_monkey,
             &blur_filter,
-            &mut pixel_getter_solid,
+            pixel_getter_zeroed,
         ).save("images/exercise_3_square_blur.png")?;
+
+        apply_filter(
+            &in_blobs,
+            &blur_filter,
+            pixel_getter_zeroed,
+        ).save("images/exercise_3_square_blur_blobs.png")?;
     });
 
-    task_timer!("exercise 3, filter 2 - square edge blue", {
-        let edge = new_filter_edge_blur(Vector2::new(11, 11));
-        GrayImage::from_fn(edge.width(), edge.height(), |x, y| {
-            Luma([(edge.get_pixel(x, y)[0] * 255.) as u8])
-        }).save("images/exercise_3_edge_blur_filter.png")?;
+    task_timer!("exercise 3, filter 2 - square edge blur", {
+        let dim = Vector2::new(11, 11);
+        filter_to_image(&luma_to_rgba(
+            &new_filter_edge_blur(dim, true))
+        ).save("images/exercise_3_edge_blur_filter.png")?;
+
+        let edge_blur_filter = luma_to_rgba(&new_filter_edge_blur(dim, false));
 
         task_timer!("apply", {
             apply_filter(
                 &in_color_monkey,
-                &luma_to_rgba(&edge),
-                &mut pixel_getter_solid,
+                &edge_blur_filter,
+                pixel_getter_zeroed,
             ).save("images/exercise_3_edge_blur.png")?;
+
+            apply_filter(
+                &in_blobs,
+                &edge_blur_filter,
+                pixel_getter_zeroed,
+            ).save("images/exercise_3_edge_blur_blobs.png")?;
         });
     });
 
     // === Advanced exercise 1 === //
 
+    task_timer!("advanced exercise 1, zeroed", {
+        apply_filter(
+            &in_art,
+            &blur_filter,
+            pixel_getter_zeroed,
+        ).save("images/exercise_adv_1_blur_zero_art.png")?;
+    });
+
     task_timer!("advanced exercise 1, move wrap", {
         apply_filter(
             &in_color_monkey,
             &luma_to_rgba(&new_filter_movement(11, Vector2::new(11, 5))),
-            &mut pixel_getter_wrap,
+            pixel_getter_wrap,
         ).save("images/exercise_adv_1_move_wrap.png")?;
     });
 
@@ -128,16 +179,36 @@ fn main_fallible() -> anyhow::Result<()> {
         apply_filter(
             &in_color_monkey,
             &blur_filter,
-            &mut pixel_getter_wrap,
+            pixel_getter_wrap,
         ).save("images/exercise_adv_1_blur_wrap.png")?;
+    });
+
+    task_timer!("advanced exercise 1, blur clamp", {
+        apply_filter(
+            &in_color_monkey,
+            &blur_filter,
+            pixel_getter_clamp,
+        ).save("images/exercise_adv_1_blur_clamp.png")?;
+
+        apply_filter(
+            &in_art,
+            &blur_filter,
+            pixel_getter_clamp,
+        ).save("images/exercise_adv_1_blur_clamp_art.png")?;
     });
 
     task_timer!("advanced exercise 1, blur mirror", {
         apply_filter(
             &in_color_monkey,
             &blur_filter,
-            &mut pixel_getter_mirror,
+            pixel_getter_mirror,
         ).save("images/exercise_adv_1_blur_mirror.png")?;
+
+        apply_filter(
+            &in_art,
+            &blur_filter,
+            pixel_getter_mirror,
+        ).save("images/exercise_adv_1_blur_mirror_art.png")?;
     });
 
     // === Advanced exercise 2 === //
@@ -193,6 +264,23 @@ fn luma_to_rgba<B: Deref<Target = [f32]>>(gray: &LumaFilter<B>) -> RgbaFilter {
     })
 }
 
+/// Converts an RGBA filter to an RGBA image.
+fn filter_to_image(img: &RgbaFilter) -> RgbaImage {
+    ImageBuffer::from_fn(
+        img.width(),
+        img.height(),
+        |x, y| {
+            let [r, g, b, a] = img.get_pixel(x, y).0;
+            Rgba([
+                (r * 255.) as u8,
+                (g * 255.) as u8,
+                (b * 255.) as u8,
+                (a * 255.) as u8,
+            ])
+        }
+    )
+}
+
 /// Directly creates an [RgbaFilter] from a hardcoded array of intensities.
 fn new_filter_hardcoded(width: u32, height: u32, pixels: &[f32]) -> RgbaFilter {
     luma_to_rgba(&LumaFilter::from_raw(width, height, pixels).expect("Illegal image size."))
@@ -237,25 +325,25 @@ fn new_filter_movement(max_comp: u32, rel: Vector2<i32>) -> LumaFilter {
 }
 
 /// Constructs a weird border blur [LumaFilter].
-fn new_filter_edge_blur(size: Vector2<u32>) -> LumaFilter {
+fn new_filter_edge_blur(size: Vector2<u32>, full_bright: bool) -> LumaFilter {
     let inner_ranges = size.map(|max| 1.min(max) .. max.checked_sub(1).unwrap_or(0));
     let outer_area = size.x * size.y;
     let inner_area = (inner_ranges.x.end - inner_ranges.x.start) * (inner_ranges.y.end - inner_ranges.y.start);
     let border_area = outer_area - inner_area;
-    let pixel_average = 1. / (border_area as f32);
+    let white = if full_bright { 1. } else { 1. / (border_area as f32) };
 
     LumaFilter::from_fn(size.x, size.y, move |x, y| {
         if inner_ranges.x.contains(&x) && inner_ranges.y.contains(&y) {
             Luma([0.])
         } else {
-            Luma([pixel_average])
+            Luma([white])
         }
     })
 }
 
 // === Filter implementations === //
 
-fn pixel_getter_solid(image: &RgbaImage, x: i32, y: i32) -> Rgba<u8> {
+fn pixel_getter_zeroed(image: &RgbaImage, x: i32, y: i32) -> Rgba<u8> {
     if x >= 0 && x < image.width() as i32 && y >= 0 && y < image.height() as i32 {
         *image.get_pixel(x as u32, y as u32)
     } else {
@@ -270,6 +358,13 @@ fn pixel_getter_wrap(image: &RgbaImage, x: i32, y: i32) -> Rgba<u8> {
     )
 }
 
+fn pixel_getter_clamp(image: &RgbaImage, x: i32, y: i32) -> Rgba<u8> {
+    *image.get_pixel(
+        x.clamp(0, image.width() as i32 - 1) as u32,
+        y.clamp(0, image.height() as i32 - 1) as u32,
+    )
+}
+
 fn pixel_getter_mirror(image: &RgbaImage, x: i32, y: i32) -> Rgba<u8> {
     let width = image.width() as i32 - 1;
     let height = image.height() as i32 - 1;
@@ -280,7 +375,7 @@ fn pixel_getter_mirror(image: &RgbaImage, x: i32, y: i32) -> Rgba<u8> {
     )
 }
 
-fn apply_filter<F>(main_view: &RgbaImage, filter_view: &RgbaFilter, getter: &mut F) -> RgbaImage
+fn apply_filter<F>(main_view: &RgbaImage, filter_view: &RgbaFilter, mut getter: F) -> RgbaImage
 where
     F: FnMut(&RgbaImage, i32, i32) -> Rgba<u8>
 {
