@@ -1,9 +1,10 @@
+// So much for zero-cost abstractions. Let's just hope the JIT is smart enough to optimize this garbage.
+
 import {assert} from "./debug";
 
-export function *range(
-    stop: number,
-    start: number = 0,
-): IterableIterator<any> {
+// === Generic array algorithms === //
+
+export function *range(stop: number, start: number = 0): IterableIterator<any> {
     for (let i = start; i < stop; i++) {
         yield i;
     }
@@ -18,6 +19,15 @@ export function swap<T>(target: T[], a: number, b: number) {
     target[a] = target[b];
     target[b] = tmp;
 }
+
+export function *enumerate<T>(target: Iterable<T>): IterableIterator<readonly [number, T]> {
+    let i = 0;
+    for (const elem of target) {
+        yield [i++, elem];
+    }
+}
+
+// === Permutations === //
 
 /// Iterates through all permutations of an array using [Heap's algorithm](heaps_algo).
 ///
@@ -52,6 +62,8 @@ export function indexPermutations(n: number): IterableIterator<number[]> {
     return arrayPermutations(Array.from(range(n)));
 }
 
+// === Virtual arrays === //
+
 export interface Indexable<T> {
     readonly [index: number]: T;
 }
@@ -84,8 +96,8 @@ export interface ArrayLike<T> extends Indexable<T>, ArrayLikeBase<T> {}
 
 class VirtualArray<T> implements ArrayLikeFn<T> {
     constructor(
-        private readonly target: readonly T[],
-        private readonly indirections: readonly number[]
+        private readonly target: ArrayLike<T>,
+        private readonly indirections: ArrayLike<number>,
     ) {}
 
     getIndex(key: number): T | undefined {
@@ -103,7 +115,71 @@ class VirtualArray<T> implements ArrayLikeFn<T> {
     }
 }
 
-export function virtualizeArray<T>(target: readonly T[], indirections: readonly number[]): ArrayLike<T> {
+export function virtualizeArray<T>(target: ArrayLike<T>, indirections: ArrayLike<number>): ArrayLike<T> {
     assert(target.length === indirections.length);
     return overloadIndexing(new VirtualArray(target, indirections));
+}
+
+class MapArray<T, V> implements ArrayLikeFn<V> {
+    constructor(
+        private readonly target: ArrayLike<T>,
+        private readonly map: (elem: T) => V,
+    ) {}
+
+    get length(): number {
+        return this.target.length;
+    }
+
+    *[Symbol.iterator](): Iterator<V> {
+        for (const elem of this.target) {
+            yield this.map(elem);
+        }
+    }
+
+    getIndex(key: number): V | undefined {
+        const elem = this.target[key];
+        return elem !== undefined ? this.map(elem) : undefined;
+    }
+}
+
+export function mapArray<U, V>(target: ArrayLike<U>, map: (elem: U) => V): ArrayLike<V> {
+    return overloadIndexing(new MapArray(target, map));
+}
+
+class ConcatArrays<T> implements ArrayLikeFn<T> {
+    constructor(
+        private readonly left: ArrayLike<T>,
+        private readonly right: ArrayLike<T>,
+    ) {}
+
+    get length(): number {
+        return this.left.length + this.right.length;
+    }
+
+    *[Symbol.iterator](): Iterator<T> {
+        for (const elem of this.left) {
+            yield elem;
+        }
+
+        for (const elem of this.right) {
+            yield elem;
+        }
+    }
+
+    getIndex(index: number): T | undefined {
+        if (index < this.left.length) {
+            return this.left[index];
+        }
+        index -= this.left.length;
+
+        if (index < this.right.length) {
+            return this.right[index];
+        }
+
+        return undefined;
+    }
+}
+
+export function concatArrays<T>(left: ArrayLike<T>, right: ArrayLike<T>): ArrayLike<T> {
+    return overloadIndexing(new ConcatArrays(left, right));
 }

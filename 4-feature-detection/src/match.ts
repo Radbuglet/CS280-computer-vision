@@ -1,46 +1,67 @@
 import {Vector2} from "./util/math";
-import {ArrayLike, indexPermutations, virtualizeArray} from "./util/array";
+import {ArrayLike, enumerate, indexPermutations, mapArray, virtualizeArray} from "./util/array";
 import {assert} from "./util/debug";
 
+export type MatchResult = CompareResult & {
+    correspondence: number[],
+};
+
+export type CompareResult = {
+    error: number,
+    expectations: ArrayLike<Vector2>,
+};
+
 export function matchNodes(
-    template: readonly Vector2[],
-    target: readonly Vector2[],
-): readonly [number, number[]] {
+    template: ArrayLike<Vector2>,
+    target: ArrayLike<Vector2>,
+): MatchResult {
     // Validate lengths
     assert(template.length === target.length, "Template and target meshes must have the same length");
     const len = template.length;
-    assert(len > 0, "Length must be non-zero");
+    assert(len >= 2, "Length must be at least 2.");
 
     // Permute the chain to find the minimum
-    let minimum: readonly [number, number[] | null] = [Infinity, null];
-    for (const permutation of indexPermutations(template.length)) {
-        const error = compareChains(template, virtualizeArray(target, permutation));
-        console.log(permutation, error);
-
-        if (error < minimum[0])
-            minimum = [error, permutation];
+    let best: Partial<MatchResult> = { error: Infinity };
+    for (const permutation of indexPermutations(len)) {
+        const match = compareChains(template, virtualizeArray(target, permutation));
+        if (match.error < best.error!) {
+            best = match;
+            best.correspondence = permutation;
+        }
     }
 
-    return minimum as readonly [number, number[]];
+    return best as MatchResult;  // The other fields were filled out in the process.
 }
 
-export function compareChains(template: ArrayLike<Vector2>, target: ArrayLike<Vector2>): number {
+export function compareChains(template: ArrayLike<Vector2>, target: ArrayLike<Vector2>): CompareResult {
     // Handle special cases
     assert(template.length === target.length);
     const len = template.length;
-    if (len <= 2) {
-        return 0;
-    }
+    assert(len >= 2);
 
-    // Compute standard scale
-    const base_scale_template = template[0].distanceTo(template[1]);
-    const base_scale_target = target[0].distanceTo(target[1]);
 
-    // Sum link errors
+    // Compare chains
+    const expectations = getExpectations(template, target[0], target[1]);
     let error = 0;
-    for (let i = 2; i < len; i++) {
-        // FIXME
+    for (const [i, expected] of enumerate(expectations)) {
+        error += target[i].distanceTo(expected);
     }
 
-    return error;
+    return { error, expectations };
+}
+
+export function getExpectations(template: ArrayLike<Vector2>, first: Vector2, second: Vector2): ArrayLike<Vector2> {
+    // Handle special cases
+    assert(template.length >= 2);
+
+    // Calculate a magical value that I can only describe using a pen and paper.
+    // Here's a Desmos project if that helps: https://www.desmos.com/calculator/kjafe1okbq
+    // I'm sure there's a really easy way to do this with Linear Algebra but I haven't gotten there yet.
+    const b_template = template[1].sub(template[0]);
+    const b_target = second.sub(first);
+    const template_to_target_rot = b_target.cross(b_template.negArgument()).normalized();
+    const template_to_target_cross = template_to_target_rot.scale(b_target.len() / b_template.len());
+
+    // Construct expectation graph
+    return mapArray(template, node => node.sub(template[0]).cross(template_to_target_cross).add(first));
 }
