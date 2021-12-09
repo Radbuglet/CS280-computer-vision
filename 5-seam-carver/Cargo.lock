@@ -367,6 +367,7 @@ dependencies = [
  "cgmath",
  "clap",
  "image",
+ "lazy_static",
 ]
 
 [[package]]
