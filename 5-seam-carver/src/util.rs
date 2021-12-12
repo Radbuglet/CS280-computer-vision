@@ -1,5 +1,5 @@
 use cgmath::Vector2;
-use image::{ImageBuffer, Luma, Pixel};
+use image::{ImageBuffer, Luma, Pixel, Rgba, RgbaImage};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -79,6 +79,23 @@ where
 }
 
 impl<T: 'static + Pixel> StaticPixel for T where T::Subpixel: 'static {}
+
+pub fn luma_to_rgba(target: &WeightImage) -> RgbaImage {
+    let mut image = RgbaImage::new(target.width(), target.height());
+    let mut weights = target
+        .enumerate_pixels()
+        .map(|(x, y, luma)| (x, y, luma.0[0]))
+        .collect::<Vec<_>>();
+    weights.sort_by(|(_, _, a), (_, _, b)| a.partial_cmp(b).unwrap());
+
+    for (i, (x, y, _)) in weights.iter().enumerate() {
+        let luma = i as f32 / weights.len() as f32;
+        let luma = (luma * 256.) as u8;
+        image.put_pixel(*x, *y, Rgba([luma, luma, luma, 255]));
+    }
+
+    image
+}
 
 struct TimerGlobal {
     print: bool,
