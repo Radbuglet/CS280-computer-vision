@@ -6,7 +6,7 @@ use anyhow::Context;
 use image::{ImageBuffer, RgbaImage};
 use num_traits::Num;
 use palette::rgb::Rgba;
-use palette::{Hsva, Hue, IntoColor, Laba, LinSrgba, RgbHue, Srgb};
+use palette::{Hsla, Hsva, Hue, IntoColor, Laba, LinSrgba, RgbHue, Srgb};
 
 fn main() {
     if let Err(err) = main_fallible() {
@@ -67,30 +67,106 @@ fn main_fallible() -> AnyResult<()> {
     map_image(&image1, xform_laba_mask(&[PRESERVE, ZERO, ZERO, PRESERVE]))
         .save("images/image1_only_l.jpg")?;
 
-    map_image(&image1, xform_laba_mask(&[PRESERVE, PRESERVE, ZERO, PRESERVE]))
-        .save("images/image1_only_la.jpg")?;
+    map_image(
+        &image1,
+        xform_laba_mask(&[ZERO, PRESERVE, PRESERVE, PRESERVE]),
+    )
+    .save("images/image1_only_ab.jpg")?;
 
-    map_image(&image1, xform_laba_mask(&[PRESERVE, ZERO, PRESERVE, PRESERVE]))
-        .save("images/image1_only_lb.jpg")?;
+    map_image(
+        &image1,
+        xform_laba_mask(&[PRESERVE, PRESERVE, ZERO, PRESERVE]),
+    )
+    .save("images/image1_only_la.jpg")?;
+
+    map_image(
+        &image1,
+        xform_laba_mask(&[PRESERVE, ZERO, PRESERVE, PRESERVE]),
+    )
+    .save("images/image1_only_lb.jpg")?;
+
+    // Normal gamut
+    {
+        const SZ: u32 = 1000;
+        ImageBuffer::from_fn(SZ, SZ, |x, y| {
+            px_pal_to_img(
+                Laba::new(
+                    50.0,
+                    lin_remap(x as f32, 0.0..(SZ as f32), -150.0..150.0),
+                    lin_remap(y as f32, 0.0..(SZ as f32), 150.0..-150.0),
+                    1.0,
+                )
+                .into_color(),
+            )
+        })
+        .save("images/image1_ab_gamut.jpg")?;
+    }
+
+    // Extreme gamut
+    {
+        const SZ: u32 = 1000;
+        ImageBuffer::from_fn(SZ, SZ, |x, y| {
+            px_pal_to_img(
+                Laba::new(
+                    50.0,
+                    lin_remap(x as f32, 0.0..(SZ as f32), -1000.0..1000.0),
+                    lin_remap(y as f32, 0.0..(SZ as f32), 1000.0..-1000.0),
+                    1.0,
+                )
+                .into_color(),
+            )
+        })
+        .save("images/image1_ab_gamut_extreme.jpg")?;
+    }
 
     // HSV component masking
-    map_image(&image1, xform_hsva_mask(&[PRESERVE, PRESERVE, PRESERVE, PRESERVE]))
-        .save("images/image1_hsv_debug.jpg")?;
+    {
+        const SZ: u32 = 1000;
+        ImageBuffer::from_fn(SZ, SZ, |x, y| {
+            let rgb: Rgba = Hsla::new(
+                lin_remap(x as f32, 0.0..(SZ as f32), 0.0..360.0),
+                lin_remap(y as f32, 0.0..(SZ as f32), 0.0..1.0),
+                0.5,
+                1.0,
+            )
+            .into_color();
+            px_pal_to_img(rgb.into_color())
+        })
+        .save("images/hue_gamut.jpg")?;
+    }
+
+    map_image(
+        &image1,
+        xform_hsva_mask(&[PRESERVE, PRESERVE, PRESERVE, PRESERVE]),
+    )
+    .save("images/image1_hsv_debug.jpg")?;
 
     map_image(&image1, xform_hsva_mask(&[ZERO, ZERO, PRESERVE, PRESERVE]))
         .save("images/image1_only_v.jpg")?;
 
-    map_image(&image1, xform_hsva_mask(&[PRESERVE, ZERO, PRESERVE, PRESERVE]))
-        .save("images/image1_only_hv.jpg")?;
+    map_image(
+        &image1,
+        xform_hsva_mask(&[PRESERVE, ZERO, PRESERVE, PRESERVE]),
+    )
+    .save("images/image1_only_hv.jpg")?;
 
-    map_image(&image1, xform_hsva_mask(&[PRESERVE, ONE, PRESERVE, PRESERVE]))
-        .save("images/image1_full_saturation.jpg")?;
+    map_image(
+        &image1,
+        xform_hsva_mask(&[PRESERVE, ONE, PRESERVE, PRESERVE]),
+    )
+    .save("images/image1_full_saturation.jpg")?;
 
-    map_image(&image2, xform_hsva_mask(&[PRESERVE, ONE, PRESERVE, PRESERVE]))
-        .save("images/image2_full_saturation.jpg")?;
+    map_image(
+        &image2,
+        xform_hsva_mask(&[PRESERVE, ONE, PRESERVE, PRESERVE]),
+    )
+    .save("images/image2_full_saturation.jpg")?;
 
-    map_image(&image1, xform_hsva_mask(&[ZERO, PRESERVE, PRESERVE, PRESERVE]))
-        .save("images/image1_only_sv.jpg")?;
+    map_image(
+        &image1,
+        xform_hsva_mask(&[ZERO, PRESERVE, PRESERVE, PRESERVE]),
+    )
+    .save("images/image1_only_sv.jpg")?;
 
     // HSV hue manipulation
     map_image(&image1, |pixel, x, _| {
