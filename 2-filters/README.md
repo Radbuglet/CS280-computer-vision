@@ -4,9 +4,9 @@ All produced images are in the `images/` directory, and were committed alongside
 
 ## Running
 
-Before running this project, make sure you have `rustc` version `1.58.0-nightly`, which you can check by running `rustc +nightly --version`. You can download `rustc` and `cargo` through [rustup](https://rustup.rs/) and upgrade to the latest rust version using either `rustup upgrade` or `rustup update` depending on your rustup version.
+Before running this project, make sure you have `rustc` version `1.58.0-nightly (c9c4b5d72 2021-11-17)` (this should be automatically enforced by `rust-toolchain.toml`). You can download `rustc` and `cargo` through [rustup](https://rustup.rs/) and upgrade to the latest rust version using either `rustup upgrade` or `rustup update` depending on your rustup version.
 
-To run the project, make sure you are in the same current working directory as this README and type `cargo +nightly run --release`.
+To run the project, make sure you are in the same current working directory as this README and type `cargo run --release`.
 
 ## Exercise 1
 
@@ -87,7 +87,7 @@ And here it is with the "edge blur" filter (also 11x11):
 
 ![Normal image](images/exercise_3_edge_blur.png)
 
-This image is not very clear (no pun intended) so let's try a different example.
+This specific impact of the edge blur filter is not very clear (no pun intended) so let's try a different example.
 
 Normal image:
 
@@ -102,10 +102,10 @@ Edge blur (11x11):
 ![Normal image](images/exercise_3_edge_blur_blobs.png)
 
 Now the difference is much clearer. In ignoring the center pixels, the inner part manifests itself only when the kernel
-borders a blob (producing the aura-like artifacts in the bib blobs) or when the kernel is fully engulfed in the blob
-(producing the clearer inner region for the big blobs only).
+borders a blob (producing the aura-like artifacts around the big blobs) or when the kernel is fully engulfed in the blob
+(hiding everything except the edges of the smaller blobs whose center is not big enough for the filter). Furthermore, the auras around the blobs have visibly distinct stages instead of a smooth transition to the center color as seen in the regular square blur example. This is because the black pixels mostly covering the filter are completely ignored when taking the average.
 
-What a highly useful filter with many real world application!
+What a highly useful filter with many real world applications!
 
 ## Advanced exercise 1
 
