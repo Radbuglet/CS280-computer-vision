@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use crate::carver::{carve_vertical, sobel, LowestDerivative};
-use crate::util::{luma_to_rgba, ImageBufferExt, Timer};
-use cgmath::Vector2;
+use crate::util::{luma_to_rgba, vec4_to_rgba, Kernel, KernelRect, Timer, VecKernel};
+use cgmath::{Vector2, Vector4, VectorSpace};
 use image::{open, RgbaImage};
 
 pub mod carver;
@@ -66,6 +66,22 @@ fn main() {
         Ok((left, right))
     }
 
+    #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+    pub enum SeamDebugEmitMode {
+        Normal,
+        Sobel,
+    }
+
+    impl SeamDebugEmitMode {
+        pub fn parse(arg: &str) -> Result<Self, String> {
+            match arg.to_lowercase().as_str() {
+                "normal" => Ok(Self::Normal),
+                "sobel" => Ok(Self::Sobel),
+                _ => Err("Invalid mode. Expected `normal` or `sobel`.".to_string()),
+            }
+        }
+    }
+
     // === App definition === //
     let args = App::new("Seam Carver")
         .author(clap::crate_authors!())
@@ -107,7 +123,21 @@ fn main() {
                         .short("c")
                         .long("seams")
                         .value_name(ARG_IMG_PATH_HINT)
-                        .help("Emits the seams used by the carver, with green seams being cheap and red ones being costly."),
+                        .help(
+                            "Emits the seams used by the carver, with green seams having been carved \
+                             earlier and red seams having been carved later."),
+                )
+                .arg(
+                    Arg::with_name("dbg_seams_mode")
+                        .short("C")
+                        .long("seams-overlay")
+                        .value_name("normal|sobel")
+                        .help("Specifies which image to overlay with seam information. Must be used \
+                               in conjunction with `--seams`.")
+                        .validator(|str| {
+                            SeamDebugEmitMode::parse(str.as_str())?;
+                            Ok(())
+                        }),
                 )
                 .arg(
                     Arg::with_name("to_size")
@@ -145,11 +175,18 @@ fn main() {
             };
             let sobel_path = args.value_of("dbg_sobel");
             let seams_path = args.value_of("dbg_seams");
+            let seams_mode = args.value_of("dbg_seams_mode");
+            if seams_path.is_none() && seams_mode.is_some() {
+                eprintln!("Warning: `--seams-overlay` specified without a `--seams` input. This option will be ignored.");
+            }
+            let seams_mode = seams_mode.map_or(SeamDebugEmitMode::Sobel, |mode| {
+                SeamDebugEmitMode::parse(mode).unwrap()
+            });
             let (to_size_x, to_size_y) = parse_dim(args.value_of("to_size").unwrap()).unwrap();
 
             // Load image
             let mut image = open(input_path).unwrap().into_rgba8();
-            let from_size = image.size_v();
+            let from_size = image.size();
 
             #[rustfmt::skip]
             let to_size = Vector2::new(
@@ -163,32 +200,70 @@ fn main() {
             }
 
             // Setup seams tracking if necessary
-            struct SeamState {
+            struct SeamState<'a> {
                 out: RgbaImage,
-                map: Vec<usize>,
+                map: VecKernel<usize>,
+                path: &'a str,
             }
 
-            // TODO: Update this
-            let _seams_state = seams_path.map(|_| SeamState {
-                out: image.clone(),
-                map: (0..(image.width() * image.height()))
-                    .map(|i| i as usize)
-                    .collect(),
+            let mut seams_state = seams_path.map(|path| SeamState {
+                out: match seams_mode {
+                    SeamDebugEmitMode::Normal => image.clone(),
+                    SeamDebugEmitMode::Sobel => luma_to_rgba(&sobel(&image)),
+                },
+                map: VecKernel::from_fn(image.size(), |pos| image.encode_pos(pos)),
+                path,
             });
 
             // Main pass
             {
                 let _outer = Timer::start("main");
-                for _ in to_size.x..from_size.x {
+                let i_max = from_size.x - to_size.x;
+                for i in 0..i_max {
                     let _inner = Timer::start("resize_pass");
+
+                    // Run a sobel filter across the image. We cannot reuse the same sobel filter
+                    // across iterations and update it with the same seam because doing so would
+                    // inaccurately reflect the modified neighbors.
                     let sobel = sobel(&image);
+
+                    // Calculate the lowest weighted seam in the image
                     let seams = LowestDerivative::find(sobel);
 
+                    // Update the seams debug image if requested
+                    if let Some(seams_state) = &mut seams_state {
+                        // Update the seam-space to original-space map
+                        seams_state.map = carve_vertical(&seams_state.map, seams.iter());
+
+                        // Paint the seam in the debug view
+                        let color = vec4_to_rgba(
+                            Vector4::new(0., 1., 0., 1.)
+                                .lerp(Vector4::new(1., 0., 0., 1.), i as f32 / i_max as f32),
+                        );
+
+                        let out_size = seams_state.out.size();
+                        let mut seam_iter = seams.iter();
+                        for y in (0..out_size.y).rev() {
+                            let x = seam_iter.next().unwrap();
+                            let seam_pos = Vector2::new(x, y);
+                            let world_pos = *seams_state.map.get(seam_pos);
+                            let world_pos = seams_state.out.decode_pos(world_pos);
+                            seams_state.out.put(world_pos, color);
+                        }
+                    }
+
+                    // Carve out the seam from the main image
                     image = carve_vertical(&image, seams.iter());
                 }
             }
-            image.save(output_path).unwrap();
 
+            // Save artifacts
+            image.save(output_path).unwrap();
+            if let Some(seams_state) = &mut seams_state {
+                seams_state.out.save(seams_state.path).unwrap();
+            }
+
+            // Print timing stats if requested
             if Timer::is_printing() {
                 println!();
                 Timer::print_summary();

@@ -1,5 +1,6 @@
-use crate::util::{luma_to_rgba, ImageBufferExt, ImageBufferVec, StaticPixel, Timer, WeightImage};
-use cgmath::{num_traits::Zero, InnerSpace, Vector2, Vector4};
+use crate::util::{luma_to_rgba, Kernel, Timer, WeightImage};
+use crate::KernelRect;
+use cgmath::{InnerSpace, Vector2, Vector4, Zero};
 use image::{Luma, Rgba, RgbaImage};
 use std::cmp::Ordering;
 
@@ -11,8 +12,8 @@ pub fn sobel(target: &RgbaImage) -> WeightImage {
 
     let _timer = Timer::start("sobel");
     target.map(|pos, _| {
-        let left = target.try_get_pixel_v(pos + Vector2::new(-1, 0));
-        let right = target.try_get_pixel_v(pos + Vector2::new(1, 0));
+        let left = target.try_get(pos + Vector2::new(-1, 0));
+        let right = target.try_get(pos + Vector2::new(1, 0));
         let luma = match (left, right) {
             (Some(left), Some(right)) => {
                 let left = rgba_to_vec4(left);
@@ -27,14 +28,14 @@ pub fn sobel(target: &RgbaImage) -> WeightImage {
 }
 
 /// Carve an image vertically across a seam.
-pub fn carve_vertical<P, I>(target: &ImageBufferVec<P>, x_list: I) -> ImageBufferVec<P>
+pub fn carve_vertical<K, I>(target: &K, x_list: I) -> K
 where
-    P: StaticPixel,
+    K: Kernel,
     I: IntoIterator<Item = i32>,
 {
     let _timer = Timer::start("carve_vertical");
-    let target_sz = target.size_v();
-    let mut carved = ImageBufferVec::new(target_sz.x as u32 - 1, target_sz.y as u32);
+    let target_sz = target.size();
+    let mut carved = K::new(target_sz - Vector2::new(1, 0));
     let mut x_list = x_list.into_iter();
 
     for y in (0..target_sz.y).rev() {
@@ -43,8 +44,7 @@ where
         for x in 0..target_sz.x {
             // Copy the pixel if we're not attempting to remove it.
             if x != remove_at {
-                *carved.get_pixel_mut_v(Vector2::new(write_x, y)) =
-                    *target.get_pixel_v(Vector2::new(x, y));
+                carved.put(Vector2::new(write_x, y), *target.get(Vector2::new(x, y)));
 
                 write_x += 1;
             }
@@ -70,7 +70,7 @@ impl LowestDerivative {
         let _timer = Timer::start("LowestDerivative::find");
 
         // Fetch and validate image dimensions
-        let size = target.size_v();
+        let size = target.size();
         debug_assert!(
             !size.is_zero(),
             "Image dimensions must be non-zero (got {:?})",
@@ -81,11 +81,11 @@ impl LowestDerivative {
         for y in 0..size.y {
             for x in 0..size.x {
                 let pos = Vector2::new(x, y);
-                let weight = target.get_pixel_v(pos).0[0]
+                let weight = target.get(pos).0[0]
                     + [
-                        target.try_get_pixel_v(pos + Vector2::new(-1, -1)),
-                        target.try_get_pixel_v(pos + Vector2::new(0, -1)),
-                        target.try_get_pixel_v(pos + Vector2::new(1, -1)),
+                        target.try_get(pos + Vector2::new(-1, -1)),
+                        target.try_get(pos + Vector2::new(0, -1)),
+                        target.try_get(pos + Vector2::new(1, -1)),
                     ]
                     .into_iter()
                     .filter_map(|luma| {
@@ -98,7 +98,7 @@ impl LowestDerivative {
                     .min_by(|a, b| a.partial_cmp(&b).unwrap())
                     .unwrap_or(0.);
 
-                *target.get_pixel_mut_v(pos) = Luma([weight]);
+                *target.get_mut(pos) = Luma([weight]);
             }
         }
 
@@ -164,7 +164,7 @@ impl Iterator for LowestDerivativeSeam<'_> {
         .iter()
         .filter_map(|rel| {
             let rel_pos = curr_iter_pos + rel;
-            Some((rel_pos, self.target.target.try_get_pixel_v(rel_pos)?.0[0]))
+            Some((rel_pos, self.target.target.try_get(rel_pos)?.0[0]))
         })
         .min_by(cmp_second_weight)
         .map(|(next_pos, _)| next_pos);
