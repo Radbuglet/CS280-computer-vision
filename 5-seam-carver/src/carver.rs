@@ -1,5 +1,4 @@
-use crate::luma_to_rgba;
-use crate::util::{ImageBufferExt, ImageBufferVec, StaticPixel, Timer, WeightImage};
+use crate::util::{luma_to_rgba, ImageBufferExt, ImageBufferVec, StaticPixel, Timer, WeightImage};
 use cgmath::{num_traits::Zero, InnerSpace, Vector2, Vector4};
 use image::{Luma, Rgba, RgbaImage};
 use std::cmp::Ordering;

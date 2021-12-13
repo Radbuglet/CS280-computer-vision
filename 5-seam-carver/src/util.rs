@@ -111,6 +111,8 @@ lazy_static! {
     });
 }
 
+const TAB_SEQ: &str = "    ";
+
 #[derive(Debug, Clone)]
 pub struct Timer<'a> {
     label: &'a str,
@@ -126,7 +128,7 @@ impl<'a> Timer<'a> {
             println!(
                 "{}+ {}",
                 FmtRepeat {
-                    seq: '\t',
+                    seq: TAB_SEQ,
                     count: global.indent,
                 },
                 label
@@ -149,7 +151,11 @@ impl<'a> Timer<'a> {
         TIMER.lock().unwrap().print = false;
     }
 
-    pub fn summary() {
+    pub fn is_printing() -> bool {
+        TIMER.lock().unwrap().print
+    }
+
+    pub fn print_summary() {
         let global = TIMER.lock().unwrap();
         println!("=== Timing Summary === ");
         for (name, accum) in &global.accumulator {
@@ -176,7 +182,7 @@ impl Drop for Timer<'_> {
             println!(
                 "{}  Elapsed: {:?}",
                 FmtRepeat {
-                    seq: '\t',
+                    seq: TAB_SEQ,
                     count: global.indent,
                 },
                 elapsed,
