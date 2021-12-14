@@ -41,8 +41,8 @@ pub trait KernelRect {
     fn decode_pos(&self, pos: usize) -> Vector2<i32> {
         debug_assert!(pos < self.dim());
         let size = self.size();
-        let y = pos % size.x as usize;
-        let x = pos / size.x as usize;
+        let x = pos % size.x as usize;
+        let y = pos / size.x as usize;
         Vector2::new(x as i32, y as i32)
     }
 }
@@ -155,10 +155,8 @@ impl<P: 'static + Default + Copy> Kernel for VecKernel<P> {
         F: FnMut(Vector2<i32>) -> Self::Pixel,
     {
         let mut pixels = Vec::with_capacity(size.x as usize * size.y as usize);
-        for x in 0..size.x {
-            for y in 0..size.y {
-                pixels.push(handler(Vector2::new(x, y)));
-            }
+        for i in 0..size.dim() {
+            pixels.push(handler(size.decode_pos(i)));
         }
 
         Self {

@@ -194,6 +194,32 @@ fn main() {
                 if to_size_y.is_rel { from_size.y } else { 0 } + to_size_y.val
             );
 
+            if to_size.y != from_size.y {
+                eprintln!(
+                    "Warning: Conversion heights must match up for the time being. \
+                              (wants resize from {} to {})",
+                    from_size.y, to_size.y
+                );
+            }
+
+            if to_size.x > from_size.x {
+                eprintln!(
+                    "Error: Target width must be less than source width for the time being. \
+                     (wants resize from {} to {})",
+                    from_size.x, to_size.x
+                );
+                return;
+            }
+
+            if to_size.x <= 0 {
+                eprintln!(
+                    "Error: Target width must be greater than 0. \
+                     (wants resize from {} to {})",
+                    from_size.x, to_size.x
+                );
+                return;
+            }
+
             // Emit sobel filter if requested
             if let Some(sobel_path) = sobel_path {
                 luma_to_rgba(&sobel(&image)).save(sobel_path).unwrap();
@@ -236,13 +262,12 @@ fn main() {
                         seams_state.map = carve_vertical(&seams_state.map, seams.iter());
 
                         // Paint the seam in the debug view
+                        let out_size = seams_state.out.size();
+                        let mut seam_iter = seams.iter();
                         let color = vec4_to_rgba(
                             Vector4::new(0., 1., 0., 1.)
                                 .lerp(Vector4::new(1., 0., 0., 1.), i as f32 / i_max as f32),
                         );
-
-                        let out_size = seams_state.out.size();
-                        let mut seam_iter = seams.iter();
                         for y in (0..out_size.y).rev() {
                             let x = seam_iter.next().unwrap();
                             let seam_pos = Vector2::new(x, y);
