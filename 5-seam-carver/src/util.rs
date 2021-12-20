@@ -3,6 +3,7 @@ use image::{ImageBuffer, Luma, Pixel, Rgba, RgbaImage};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::mem::MaybeUninit;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -214,6 +215,124 @@ pub fn vec4_to_rgba(vec: Vector4<f32>) -> Rgba<u8> {
     ])
 }
 
+// === Iterator magic === //
+
+#[derive(Debug)]
+pub enum CollectArrayError<I: Iterator, const N: usize> {
+    TooSmall(usize),
+    TooBig([I::Item; N], I),
+}
+
+pub trait IterCollectArrayExt: Sized + IntoIterator {
+    fn try_collect_array<const N: usize>(
+        self,
+    ) -> Result<[Self::Item; N], CollectArrayError<Self::IntoIter, N>> {
+        let mut iter = self.into_iter();
+        let mut target =
+            unsafe { MaybeUninit::<[MaybeUninit<Self::Item>; N]>::uninit().assume_init() };
+
+        for i in 0..N {
+            target[i] = match iter.next() {
+                Some(elem) => MaybeUninit::new(elem),
+                None => return Err(CollectArrayError::TooSmall(i)),
+            }
+        }
+
+        let target = unsafe {
+            // This janky cast bypasses transmute's size checks, which don't yet know how to deal
+            // with `const` parameters. This is what the unstable `MaybeUninit::array_assume_init`
+            // method does internally.
+            (&target as *const _ as *const [Self::Item; N]).read()
+        };
+
+        if iter.next().is_none() {
+            Ok(target)
+        } else {
+            Err(CollectArrayError::TooBig(target, iter))
+        }
+    }
+}
+
+impl<I: IntoIterator> IterCollectArrayExt for I {}
+
+pub trait IterTryCollectExt {
+    type Ok;
+    type Err;
+
+    fn try_collect<C: FromIterator<Self::Ok>>(self) -> Result<C, Self::Err>;
+}
+
+impl<I, T, E> IterTryCollectExt for I
+where
+    I: IntoIterator<Item = Result<T, E>>,
+{
+    type Ok = T;
+    type Err = E;
+
+    fn try_collect<C: FromIterator<Self::Ok>>(self) -> Result<C, Self::Err> {
+        let mut iter = self.into_iter();
+        let ok_iter = (&mut iter)
+            .take_while(Result::is_ok)
+            // Default unwrap methods format the error on panic.
+            .map(|res| match res {
+                Ok(res) => res,
+                Err(_) => unreachable!(),
+            });
+
+        let collection = ok_iter.collect::<C>();
+        match iter.next() {
+            Some(Ok(_)) => unreachable!(),
+            Some(Err(err)) => Err(err),
+            None => Ok(collection),
+        }
+    }
+}
+
+pub trait VecRemoveExt {
+    type Elem;
+
+    fn keep_where<F>(&mut self, predicate: F)
+    where
+        F: FnMut(&mut [Self::Elem], &mut Self::Elem) -> bool;
+}
+
+impl<T> VecRemoveExt for Vec<T> {
+    type Elem = T;
+
+    fn keep_where<F>(&mut self, mut predicate: F)
+    where
+        F: FnMut(&mut [Self::Elem], &mut Self::Elem) -> bool,
+    {
+        unsafe {
+            // Vec Layout: [Committed elements] [Logically uninitialized] [Remaining list]
+            //                                  ^ write_head              ^ read_head
+            let mut write_at = 0;
+            for read_head in 0..self.len() {
+                // Split vector up unsafely.
+                let left = std::slice::from_raw_parts_mut(self.as_mut_ptr(), write_at);
+                let elem = self.get_unchecked_mut(read_head);
+
+                // Check if we should copy over this element.
+                let should_keep = predicate(left, elem);
+                let elem = elem as *mut T;
+
+                if should_keep {
+                    (self.get_unchecked_mut(write_at) as *mut T).copy_from_nonoverlapping(elem, 1);
+                    write_at += 1;
+                } else {
+                    // Otherwise, drop whatever is underneath the read head so the write head doesn't
+                    // have to.
+                    elem.drop_in_place();
+                }
+
+                // N.B. We do this in the inner loop in case Rust panics. We could do also have done
+                // this outside with a guard but I'm lazy.
+                self.set_len(write_at);
+            }
+        }
+    }
+}
+
 // === Debug tools === //
 
 struct TimerGlobal {
@@ -320,6 +439,32 @@ impl<S: Display> Display for FmtRepeat<S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for _ in 0..self.count {
             self.seq.fmt(f)?
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FmtDisplayIter<I, S> {
+    pub iter: I,
+    pub sep: S,
+}
+
+impl<I, S> Display for FmtDisplayIter<I, S>
+where
+    I: IntoIterator + Clone,
+    I::Item: Display,
+    S: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut iter = self.iter.clone().into_iter();
+        let mut next = iter.next();
+        while let Some(elem) = next {
+            elem.fmt(f)?;
+            next = iter.next();
+            if next.is_some() {
+                self.sep.fmt(f)?;
+            }
         }
         Ok(())
     }

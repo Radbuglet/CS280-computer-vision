@@ -1,5 +1,4 @@
-use crate::util::{luma_to_rgba, Kernel, Timer, WeightImage};
-use crate::KernelRect;
+use crate::util::{Kernel, KernelRect, Timer, WeightImage};
 use cgmath::{InnerSpace, Vector2, Vector4, Zero};
 use image::{Luma, Rgba, RgbaImage};
 use std::cmp::Ordering;
@@ -45,7 +44,6 @@ where
             // Copy the pixel if we're not attempting to remove it.
             if x != remove_at {
                 carved.put(Vector2::new(write_x, y), *target.get(Vector2::new(x, y)));
-
                 write_x += 1;
             }
         }
@@ -128,18 +126,6 @@ impl LowestDerivative {
             target: self,
             iter_pos: Some(Vector2::new(self.best_x, (self.target.height() - 1) as i32)),
         }
-    }
-
-    pub fn debug_seam(&self) -> RgbaImage {
-        let mut weights = luma_to_rgba(self.weights());
-        for (y, x) in self.iter().enumerate() {
-            weights.put_pixel(
-                x as u32,
-                self.target.height() - 1 - y as u32,
-                Rgba([255, 0, 0, 255]),
-            );
-        }
-        weights
     }
 }
 
